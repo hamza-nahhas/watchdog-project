@@ -110,6 +110,32 @@ void log_event(log_level_t level, const char *fmt, ...)
     errno = saved_errno;
 }
 
+/* Status report triggered by SIGUSR1 (the main loop calls this after the
+ * handler set g_sigusr1). One STATUS line per child, framed by BEGIN/END so
+ * a report can be found and parsed in the log. */
+void log_status_report(const child_t *children, int count)
+{
+    if (children == NULL || count < 0)
+        count = 0;
+
+    time_t now = time(NULL);
+    log_event(LVL_INFO, "STATUS_REPORT_BEGIN count=%d", count);
+
+    for (int i = 0; i < count; i++) {
+        const child_t *c = &children[i];
+        int running = (c->state == CHILD_RUNNING);
+        long uptime = 0;
+        if (running && c->started_at > 0 && now != (time_t)-1)
+            uptime = (long)difftime(now, c->started_at);
+
+        log_event(LVL_INFO, "STATUS name=%s pid=%ld state=%s restarts=%d uptime=%lds",
+                  c->name, running ? (long)c->pid : -1L,
+                  pm_state_name(c->state), c->restarts, uptime);
+    }
+
+    log_event(LVL_INFO, "STATUS_REPORT_END");
+}
+
 void log_close(void)
 {
     if (g_log_fd < 0)
