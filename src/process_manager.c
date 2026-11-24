@@ -161,3 +161,81 @@ int pm_spawn_all(void) {
     }
     return started;
 }
+
+static child_t *find_child_by_pid(pid_t pid) {
+    for (int i = 0; i < g_child_count; i++) {
+        if (g_children[i].pid == pid) {
+            return &g_children[i];
+        }
+    }
+    return NULL;
+}
+
+static void handle_unexpected_exit(child_t *c, pid_t old_pid) {
+    if (g_shutting_down) {
+        c->state = CHILD_STOPPED;
+        log_event(LVL_INFO, "CHILD_STOPPED name=%s pid=%ld",
+                  c->name, (long)old_pid);
+        return;
+    }
+
+    if (c->restarts < MAX_RESTARTS) {
+        c->restarts++;
+        log_event(LVL_INFO, "CHILD_RESTART name=%s attempt=%d/%d",
+                  c->name, c->restarts, MAX_RESTARTS);
+        (void)spawn_child(c);
+    } else {
+        c->state = CHILD_FAILED;
+        log_event(LVL_ERROR, "RESTART_LIMIT_REACHED name=%s restarts=%d",
+                  c->name, c->restarts);
+    }
+}
+
+void pm_reap(void) {
+    for (;;) {
+        int status = 0;
+        pid_t pid = waitpid(-1, &status, WNOHANG);
+
+        if (pid == 0) {
+            break;
+        }
+        if (pid < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == ECHILD) {
+                break;
+            }
+            log_event(LVL_ERROR, "ERROR op=waitpid detail=%s", strerror(errno));
+            break;
+        }
+
+        child_t *c = find_child_by_pid(pid);
+        if (c == NULL) {
+            continue;
+        }
+
+        c->last_status = status;
+        c->pid = -1;
+
+        if (WIFEXITED(status)) {
+            int code = WEXITSTATUS(status);
+            if (code == 0) {
+                c->state = CHILD_EXITED_NORMAL;
+                log_event(LVL_INFO, "CHILD_EXIT_NORMAL name=%s pid=%ld code=0",
+                          c->name, (long)pid);
+            } else {
+                log_event(LVL_WARN, "CHILD_EXIT_ERROR name=%s pid=%ld code=%d",
+                          c->name, (long)pid, code);
+                handle_unexpected_exit(c, pid);
+            }
+        } else if (WIFSIGNALED(status)) {
+            int sig = WTERMSIG(status);
+            log_event(LVL_WARN, "CHILD_KILLED name=%s pid=%ld signal=%s",
+                      c->name, (long)pid, sm_signal_name(sig));
+            handle_unexpected_exit(c, pid);
+        } else {
+            handle_unexpected_exit(c, pid);
+        }
+    }
+}
