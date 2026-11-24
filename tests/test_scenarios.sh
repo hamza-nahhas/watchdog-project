@@ -193,3 +193,29 @@ else
     record 5 "Restart limit (manual)" FAIL "restart limit for worker-A not enforced"
 fi
 
+# 6. Status reporting: SIGUSR1 -> one STATUS line per child.
+before=$(count_log 'STATUS_REPORT_BEGIN')
+kill -USR1 "$WD_PID" 2>/dev/null
+if wait_for_count 'STATUS_REPORT_BEGIN count=4' $((before + 1)) 3 &&
+    wait_for_log 'STATUS_REPORT_END' 3 &&
+    has_log 'STATUS name=worker-B pid=[0-9]+ state=RUNNING restarts=0 uptime=[0-9]+s' &&
+    has_log 'STATUS name=worker-A pid=-1 state=FAILED restarts=3' &&
+    has_log 'STATUS name=worker-C pid=-1 state=EXITED_NORMAL'; then
+    record 6 "Status reporting (SIGUSR1)" PASS "report written with state of all 4 children"
+else
+    record 6 "Status reporting (SIGUSR1)" FAIL "status report missing or wrong"
+fi
+
+# 7. Graceful shutdown with SIGTERM: worker-B ignores SIGTERM -> SIGKILL after timeout.
+kill -TERM "$WD_PID" 2>/dev/null
+if wait_for_log 'SHUTDOWN_COMPLETE' 10 && wait_wd_exit 3 &&
+    has_log 'SHUTDOWN_BEGIN signal=SIGTERM' &&
+    has_log 'CHILD_SIGTERM_SENT name=worker-B ' &&
+    has_log 'CHILD_SIGKILL_SENT name=worker-B ' &&
+    has_log 'CHILD_STOPPED name=worker-B ' &&
+    [ -z "$(worker_procs)" ] && [ -z "$(zombie_procs)" ] && [ ! -e "$PIDFILE" ]; then
+    record 7 "Graceful shutdown (SIGTERM)" PASS "children terminated + reaped, no zombies"
+else
+    record 7 "Graceful shutdown (SIGTERM)" FAIL "shutdown incomplete (see log)"
+fi
+
