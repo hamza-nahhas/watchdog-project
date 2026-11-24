@@ -135,3 +135,35 @@ fi
 [ -x ./watchdog ] && [ -x ./worker ] || { say "watchdog/worker binaries missing"; exit 1; }
 
 # ---------------------------------------------------------------------------
+# Run 1: scenarios 1-7, 9
+# ---------------------------------------------------------------------------
+
+say "== Run 1: starting ./watchdog"
+start_watchdog
+
+# 1. Normal operation: 4 children started, pid file written.
+if wait_for_count 'CHILD_START name=worker-' 4 5 && has_log "WATCHDOG_START pid=$WD_PID" &&
+    [ -f "$PIDFILE" ] && [ "$(tr -d '[:space:]' <"$PIDFILE")" = "$WD_PID" ]; then
+    record 1 "Normal operation" PASS "4 children started, pid file = $WD_PID"
+else
+    record 1 "Normal operation" FAIL "expected 4 CHILD_START lines and watchdog.pid = $WD_PID"
+fi
+
+# 2. Normal termination: worker-C exits with code 0 after 8 s and is NOT restarted.
+if wait_for_log 'CHILD_EXIT_NORMAL name=worker-C .*code=0' 12 && sleep 0.5 &&
+    ! has_log 'CHILD_RESTART name=worker-C '; then
+    record 2 "Normal termination" PASS "worker-C exit 0 detected, not restarted"
+else
+    record 2 "Normal termination" FAIL "no CHILD_EXIT_NORMAL for worker-C, or it was restarted"
+fi
+
+# 3. Error exit + restart limit (automatic): worker-D exits with code 2 every 3 s.
+if wait_for_log 'RESTART_LIMIT_REACHED name=worker-D ' 20 &&
+    has_log 'CHILD_EXIT_ERROR name=worker-D .*code=2' &&
+    has_log 'CHILD_RESTART name=worker-D attempt=3/3' &&
+    (($(count_log 'CHILD_START name=worker-D ') == 4)); then
+    record 3 "Error exit + restart limit" PASS "worker-D restarted 3 times, then given up"
+else
+    record 3 "Error exit + restart limit" FAIL "expected 3 restarts of worker-D then RESTART_LIMIT_REACHED"
+fi
+
