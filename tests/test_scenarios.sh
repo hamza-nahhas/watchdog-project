@@ -219,3 +219,57 @@ else
     record 7 "Graceful shutdown (SIGTERM)" FAIL "shutdown incomplete (see log)"
 fi
 
+# 9. Log verification: every line well-formed, every expected event present.
+bad=$(grep -Evc '^\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\] \[(INFO |WARN |ERROR)\] [A-Z_]+( |$)' "$LOG")
+missing=""
+for ev in WATCHDOG_START CHILD_START CHILD_EXIT_NORMAL CHILD_EXIT_ERROR CHILD_KILLED \
+    CHILD_RESTART RESTART_LIMIT_REACHED PERIODIC_CHECK STATUS_REPORT_BEGIN STATUS \
+    STATUS_REPORT_END SHUTDOWN_BEGIN CHILD_SIGTERM_SENT CHILD_SIGKILL_SENT CHILD_STOPPED \
+    SHUTDOWN_COMPLETE; do
+    has_log "\] $ev( |$)" || missing="$missing $ev"
+done
+if [ "${bad:-1}" = 0 ] && [ -z "$missing" ]; then
+    record 9 "Log verification" PASS "$(count_log '.') well-formed lines, all events present"
+else
+    record 9 "Log verification" FAIL "malformed lines: ${bad:-?}; missing:${missing:- none}"
+fi
+
+mkdir -p docs
+cp "$LOG" "$SAMPLE_LOG"
+
+# ---------------------------------------------------------------------------
+# Run 2: scenario 8 (Ctrl+C = SIGINT)
+# ---------------------------------------------------------------------------
+
+say "== Run 2: starting ./watchdog (SIGINT test)"
+start_watchdog
+if wait_for_count 'CHILD_START name=worker-' 4 5; then
+    kill -INT "$WD_PID" 2>/dev/null
+fi
+if wait_for_log 'SHUTDOWN_COMPLETE' 10 && wait_wd_exit 3 &&
+    has_log 'SHUTDOWN_BEGIN signal=SIGINT' &&
+    [ -z "$(worker_procs)" ] && [ -z "$(zombie_procs)" ]; then
+    record 8 "Graceful shutdown (SIGINT / Ctrl+C)" PASS "children terminated + reaped"
+else
+    record 8 "Graceful shutdown (SIGINT / Ctrl+C)" FAIL "SIGINT shutdown incomplete"
+fi
+
+# ---------------------------------------------------------------------------
+# Results
+# ---------------------------------------------------------------------------
+
+total=${#T_ID[@]}
+passed=$((total - FAILS))
+{
+    echo "Watchdog test results - $(date '+%Y-%m-%d %H:%M:%S') - $(uname -sr)"
+    echo
+    printf '| %-2s | %-36s | %-6s | %s\n' "#" "Scenario" "Result" "Detail"
+    printf '|----|--------------------------------------|--------|------------------------------\n'
+    for i in "${!T_ID[@]}"; do
+        printf '| %-2s | %-36s | %-6s | %s\n' "${T_ID[$i]}" "${T_NAME[$i]}" "${T_RESULT[$i]}" "${T_DETAIL[$i]}"
+    done
+    echo
+    echo "Summary: $passed/$total passed"
+} | tee "$RESULTS_FILE"
+
+((FAILS == 0))
