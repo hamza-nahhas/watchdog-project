@@ -167,3 +167,29 @@ else
     record 3 "Error exit + restart limit" FAIL "expected 3 restarts of worker-D then RESTART_LIMIT_REACHED"
 fi
 
+# 4. Unexpected termination: SIGKILL worker-A (pid verified first), expect restart 1/3.
+if kill_worker_verified worker-A &&
+    wait_for_log "CHILD_KILLED name=worker-A pid=$LAST_KILLED signal=SIGKILL" 3 &&
+    wait_for_log 'CHILD_RESTART name=worker-A attempt=1/3' 3 &&
+    wait_for_count 'CHILD_START name=worker-A ' 2 3; then
+    record 4 "Unexpected termination" PASS "SIGKILL detected, worker-A restarted (1/3)"
+else
+    record 4 "Unexpected termination" FAIL "no CHILD_KILLED / CHILD_RESTART for worker-A"
+fi
+
+# 5. Restart limit (manual): kill worker-A 3 more times; the 4th death is not restarted.
+ok=1
+for n in 2 3 4; do
+    if ! { wait_for_count 'CHILD_START name=worker-A ' "$n" 3 && kill_worker_verified worker-A &&
+        wait_for_log "CHILD_KILLED name=worker-A pid=$LAST_KILLED " 3; }; then
+        ok=0
+        break
+    fi
+done
+if ((ok)) && wait_for_log 'RESTART_LIMIT_REACHED name=worker-A ' 3 && sleep 1 &&
+    (($(count_log 'CHILD_START name=worker-A ') == 4)) && ! has_log 'attempt=4/'; then
+    record 5 "Restart limit (manual)" PASS "3 restarts, 4th kill -> RESTART_LIMIT_REACHED"
+else
+    record 5 "Restart limit (manual)" FAIL "restart limit for worker-A not enforced"
+fi
+
