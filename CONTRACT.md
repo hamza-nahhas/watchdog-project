@@ -305,7 +305,8 @@ The script copies the log of the full run to `docs/sample_log.txt` and the PASS/
 3. Every prompt ends by checking its **Done when** below, then printing a **HANDOFF** block (5 lines max, to paste into the team chat): what was done, branch / PR link, what the next person must do now.
 4. Never push to `main` directly, never force-push, never rewrite history, never edit files owned by another student (section 1).
 5. Human stop points (the agent must wait for the user): confirming git identity, approving review text before posting, asking for missing names/usernames.
-6. Until Gate D, `main` is **not expected to build** (modules arrive in separate PRs). No agent may "fix" this by adding stubs or other students' files. Compile-check with scratch headers instead (outside the repo).
+6. **No `Co-Authored-By` trailers** (or any other AI attribution line) in commit messages or PR descriptions. The repo's `.claude/settings.json` turns this off for Claude Code; if your agent still adds one, remove it before pushing.
+7. Until Gate D, `main` is **not expected to build** (modules arrive in separate PRs). No agent may "fix" this by adding stubs or other students' files. Compile-check with scratch headers instead (outside the repo).
 
 ### 10.2 Phases
 
