@@ -239,3 +239,149 @@ void pm_reap(void) {
         }
     }
 }
+
+void pm_set_shutting_down(void) {
+    g_shutting_down = 1;
+}
+
+static long elapsed_ms_since(const struct timespec *start) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) == -1) {
+        log_event(LVL_ERROR, "ERROR op=clock_gettime detail=%s", strerror(errno));
+        return -1;
+    }
+    return (long)(now.tv_sec - start->tv_sec) * 1000L +
+           (now.tv_nsec - start->tv_nsec) / 1000000L;
+}
+
+static void reap_for_shutdown(void) {
+    for (;;) {
+        int status = 0;
+        pid_t pid = waitpid(-1, &status, WNOHANG);
+
+        if (pid == 0) {
+            break;
+        }
+        if (pid < 0) {
+            if (errno == EINTR) {
+                continue;
+            }
+            if (errno == ECHILD) {
+                break;
+            }
+            log_event(LVL_ERROR, "ERROR op=waitpid detail=%s", strerror(errno));
+            break;
+        }
+
+        child_t *c = find_child_by_pid(pid);
+        if (c != NULL) {
+            c->last_status = status;
+            c->pid = -1;
+            c->state = CHILD_STOPPED;
+            log_event(LVL_INFO, "CHILD_STOPPED name=%s pid=%ld",
+                      c->name, (long)pid);
+        }
+    }
+}
+
+void pm_shutdown_all(int timeout_sec) {
+    struct timespec start;
+    long timeout_ms = (timeout_sec > 0) ? (long)timeout_sec * 1000L : 0L;
+
+    g_shutting_down = 1;
+    reap_for_shutdown();
+
+    /* Step 1: send SIGTERM to all running children. */
+    for (int i = 0; i < g_child_count; i++) {
+        child_t *c = &g_children[i];
+        if (c->state != CHILD_RUNNING || c->pid <= 0) {
+            continue;
+        }
+
+        if (kill(c->pid, SIGTERM) == 0) {
+            log_event(LVL_INFO, "CHILD_SIGTERM_SENT name=%s pid=%ld",
+                      c->name, (long)c->pid);
+        } else if (errno != ESRCH) {
+            log_event(LVL_ERROR, "ERROR op=kill name=%s detail=%s",
+                      c->name, strerror(errno));
+        }
+    }
+
+    /* Step 2: wait up to timeout_sec for graceful exits. */
+    if (clock_gettime(CLOCK_MONOTONIC, &start) == -1) {
+        log_event(LVL_ERROR, "ERROR op=clock_gettime detail=%s", strerror(errno));
+        timeout_ms = 0;
+    }
+
+    while (pm_running_count() > 0) {
+        long elapsed_ms;
+        struct timespec req;
+
+        reap_for_shutdown();
+        if (pm_running_count() == 0) {
+            break;
+        }
+
+        elapsed_ms = elapsed_ms_since(&start);
+        if (elapsed_ms < 0 || elapsed_ms >= timeout_ms) {
+            break;
+        }
+
+        req.tv_sec = 0;
+        req.tv_nsec = 100000000L; /* 100 ms */
+        if (nanosleep(&req, NULL) == -1 && errno != EINTR) {
+            log_event(LVL_ERROR, "ERROR op=nanosleep detail=%s", strerror(errno));
+        }
+    }
+
+    /* Step 3: escalate with SIGKILL for any surviving children. */
+    for (int i = 0; i < g_child_count; i++) {
+        child_t *c = &g_children[i];
+        if (c->state != CHILD_RUNNING || c->pid <= 0) {
+            continue;
+        }
+
+        if (kill(c->pid, SIGKILL) == 0) {
+            log_event(LVL_WARN, "CHILD_SIGKILL_SENT name=%s pid=%ld",
+                      c->name, (long)c->pid);
+        } else if (errno != ESRCH) {
+            log_event(LVL_ERROR, "ERROR op=kill name=%s detail=%s",
+                      c->name, strerror(errno));
+        }
+    }
+
+    /* Step 4: blocking reap so zero zombies remain. */
+    for (int i = 0; i < g_child_count; i++) {
+        child_t *c = &g_children[i];
+        if (c->state != CHILD_RUNNING || c->pid <= 0) {
+            continue;
+        }
+
+        pid_t target = c->pid;
+        int status = 0;
+        pid_t r;
+
+        do {
+            r = waitpid(target, &status, 0);
+        } while (r == -1 && errno == EINTR);
+
+        if (r > 0) {
+            c->last_status = status;
+            c->pid = -1;
+            c->state = CHILD_STOPPED;
+            log_event(LVL_INFO, "CHILD_STOPPED name=%s pid=%ld",
+                      c->name, (long)target);
+        } else if (errno == ECHILD) {
+            c->pid = -1;
+            c->state = CHILD_STOPPED;
+            log_event(LVL_INFO, "CHILD_STOPPED name=%s pid=%ld",
+                      c->name, (long)target);
+        } else {
+            log_event(LVL_ERROR, "ERROR op=waitpid name=%s detail=%s",
+                      c->name, strerror(errno));
+        }
+    }
+
+    /* Final non-blocking sweep for any remaining child. */
+    reap_for_shutdown();
+}
