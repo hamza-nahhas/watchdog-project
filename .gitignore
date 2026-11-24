@@ -1,0 +1,10 @@
+# Build products
+watchdog
+worker
+build/
+*.o
+*.d
+
+# Runtime files
+watchdog.log
+watchdog.pid
