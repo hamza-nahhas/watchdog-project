@@ -140,6 +140,16 @@ int main(void)
         }
     }
 
+    /* Shutdown. The signals stay blocked: a second Ctrl+C now only sets
+     * g_shutdown again and cannot interrupt the sequence half-way. */
+    log_event(LVL_INFO, "SHUTDOWN_BEGIN signal=%s", sm_signal_name(g_shutdown));
+    pm_set_shutting_down();   /* first: pm_reap must not restart anyone now */
+    pm_stop_timer();
+    pm_shutdown_all(SHUTDOWN_TIMEOUT_SEC);   /* SIGTERM, wait, SIGKILL, reap all */
+    log_event(LVL_INFO, "SHUTDOWN_COMPLETE");
+
+    if (unlink(PID_FILE) == -1)
+        log_event(LVL_ERROR, "ERROR op=unlink detail=%s", strerror(errno));
     log_close();
     return 0;
 }
