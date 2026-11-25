@@ -1,0 +1,82 @@
+/*
+ * signal_manager.c - async-signal-safe signal handling for the watchdog.
+ *
+ * Design (CONTRACT.md section 3, rules 2-4):
+ *   - Handlers do exactly one thing: store into a volatile sig_atomic_t flag.
+ *     All real work (waitpid, logging, fork) happens later in the main loop.
+ *   - The main loop keeps the 5 signals blocked and only lets them in inside
+ *     sigsuspend(), so a flag can never be set between "check" and "sleep".
+ */
+#include "signal_manager.h"
+
+#include <errno.h>
+#include <stddef.h>
+#include <string.h>
+
+/* volatile: the compiler must re-read the flag on every check, because it is
+ * changed outside normal control flow. sig_atomic_t: reads and writes are
+ * atomic with respect to signal delivery, so the main loop never sees a
+ * half-written value. These are the only object types the C standard lets a
+ * handler write to safely. */
+volatile sig_atomic_t g_sigchld  = 0;
+volatile sig_atomic_t g_sigusr1  = 0;
+volatile sig_atomic_t g_sigalrm  = 0;
+volatile sig_atomic_t g_shutdown = 0;
+
+/* The 5 signals the watchdog handles; shared by every helper below. */
+static const int k_signals[] = { SIGCHLD, SIGUSR1, SIGALRM, SIGINT, SIGTERM };
+#define N_SIGNALS ((int)(sizeof k_signals / sizeof k_signals[0]))
+
+/* One handler for all 5 signals. It calls no function at all (so nothing
+ * non-async-signal-safe can slip in) and only does plain stores into
+ * sig_atomic_t flags. errno is saved and restored anyway, so that a future
+ * edit adding a syscall here cannot corrupt the errno the interrupted main
+ * code is about to read. */
+static void sm_handler(int signo)
+{
+    int saved_errno = errno;
+
+    switch (signo) {
+    case SIGCHLD: g_sigchld = 1;      break;
+    case SIGUSR1: g_sigusr1 = 1;      break;
+    case SIGALRM: g_sigalrm = 1;      break;
+    case SIGINT:                       /* fall through */
+    case SIGTERM: g_shutdown = signo; break; /* keep the number: SHUTDOWN_BEGIN logs it */
+    default:                          break;
+    }
+
+    errno = saved_errno;
+}
+
+int sm_install_handlers(void)
+{
+    struct sigaction sa;
+    int i;
+
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = sm_handler;
+
+    /* sa_mask blocks all 5 while the handler runs, so one handler can never be
+     * interrupted by another one (no nesting, no surprises). */
+    if (sigemptyset(&sa.sa_mask) == -1)
+        return -1;
+    for (i = 0; i < N_SIGNALS; i++)
+        if (sigaddset(&sa.sa_mask, k_signals[i]) == -1)
+            return -1;
+
+    for (i = 0; i < N_SIGNALS; i++) {
+        /* SA_RESTART: slow syscalls (write to the log, waitpid, ...) are
+         * resumed instead of failing with EINTR. sigsuspend() and nanosleep()
+         * still return EINTR, which is exactly what the main loop wants. */
+        sa.sa_flags = SA_RESTART;
+        /* SA_NOCLDSTOP: no SIGCHLD when a child is merely stopped/continued
+         * (SIGSTOP/SIGCONT); we only care about children that terminate. */
+        if (k_signals[i] == SIGCHLD)
+            sa.sa_flags |= SA_NOCLDSTOP;
+        /* sigaction() rather than signal(): its semantics are fully defined by
+         * POSIX (handler stays installed, mask and flags are explicit). */
+        if (sigaction(k_signals[i], &sa, NULL) == -1)
+            return -1;
+    }
+    return 0;
+}
