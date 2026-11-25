@@ -80,3 +80,37 @@ int sm_install_handlers(void)
     }
     return 0;
 }
+
+int sm_block_signals(sigset_t *oldmask)
+{
+    sigset_t set;
+    int i;
+
+    if (sigemptyset(&set) == -1)
+        return -1;
+    for (i = 0; i < N_SIGNALS; i++)
+        if (sigaddset(&set, k_signals[i]) == -1)
+            return -1;
+
+    /* Blocked BEFORE handlers are installed and BEFORE any fork(): a child
+     * that dies instantly then leaves SIGCHLD pending instead of firing while
+     * the child table is half filled in. Pending signals are delivered at the
+     * next sigsuspend(), so nothing is lost. The previous mask is returned so
+     * the wait mask can be built from it. */
+    return sigprocmask(SIG_BLOCK, &set, oldmask);
+}
+
+void sm_wait_mask(const sigset_t *oldmask, sigset_t *waitmask)
+{
+    int i;
+
+    /* waitmask = the original mask with our 5 signals allowed. sigsuspend()
+     * installs this mask and sleeps in ONE atomic step, so a signal arriving
+     * just after the main loop checked the flags stays pending until we are
+     * asleep and then wakes us: the classic "check, then pause()" race where
+     * the wakeup is lost cannot happen. sigdelset() only fails for an invalid
+     * signal number, and these 5 are always valid. */
+    *waitmask = *oldmask;
+    for (i = 0; i < N_SIGNALS; i++)
+        (void)sigdelset(waitmask, k_signals[i]);
+}
