@@ -12,6 +12,7 @@
 #include <errno.h>
 #include <stddef.h>
 #include <string.h>
+#include <unistd.h>
 
 /* volatile: the compiler must re-read the flag on every check, because it is
  * changed outside normal control flow. sig_atomic_t: reads and writes are
@@ -113,4 +114,72 @@ void sm_wait_mask(const sigset_t *oldmask, sigset_t *waitmask)
     *waitmask = *oldmask;
     for (i = 0; i < N_SIGNALS; i++)
         (void)sigdelset(waitmask, k_signals[i]);
+}
+
+/* Runs in the child between fork() and exec(). After fork() only
+ * async-signal-safe calls are allowed (another thread or a stdio buffer of the
+ * parent could be mid-update), so only sigaction, sigemptyset, sigprocmask and
+ * write are used here: no stdio, no logger.
+ * On failure there is no one to return an error to, so a fixed message goes
+ * to stderr with write() and the exec still happens. */
+void sm_child_reset(void)
+{
+    static const char msg[] = "watchdog: sm_child_reset failed in child\n";
+    struct sigaction sa;
+    sigset_t none;
+    int i, failed = 0;
+
+    /* Handlers would be reset by exec anyway, but resetting them here also
+     * covers the window between fork and exec: a signal there must not run
+     * the parent's handler and set the parent's flags in the child's copy. */
+    memset(&sa, 0, sizeof sa);
+    sa.sa_handler = SIG_DFL;
+    if (sigemptyset(&sa.sa_mask) == -1)
+        failed = 1;
+    for (i = 0; i < N_SIGNALS; i++)
+        if (sigaction(k_signals[i], &sa, NULL) == -1)
+            failed = 1;
+
+    /* The signal mask, unlike handlers, SURVIVES exec(). Without this the
+     * worker would start with SIGTERM blocked and ignore the watchdog's
+     * shutdown request. Unblock everything. */
+    if (sigemptyset(&none) == -1 || sigprocmask(SIG_SETMASK, &none, NULL) == -1)
+        failed = 1;
+
+    if (failed) {
+        ssize_t r = write(STDERR_FILENO, msg, sizeof msg - 1);
+        (void)r; /* nothing more can be done in the child */
+    }
+}
+
+/* For log messages only (uses no state, but not meant for handlers: logging
+ * never happens in a handler anyway). 0 means "no signal" and gives "NONE",
+ * which is what SHUTDOWN_BEGIN logs when all children finished on their own. */
+const char *sm_signal_name(int signo)
+{
+    switch (signo) {
+    case 0:       return "NONE";
+    case SIGHUP:  return "SIGHUP";
+    case SIGINT:  return "SIGINT";
+    case SIGQUIT: return "SIGQUIT";
+    case SIGILL:  return "SIGILL";
+    case SIGTRAP: return "SIGTRAP";
+    case SIGABRT: return "SIGABRT";
+    case SIGBUS:  return "SIGBUS";
+    case SIGFPE:  return "SIGFPE";
+    case SIGKILL: return "SIGKILL";
+    case SIGUSR1: return "SIGUSR1";
+    case SIGSEGV: return "SIGSEGV";
+    case SIGUSR2: return "SIGUSR2";
+    case SIGPIPE: return "SIGPIPE";
+    case SIGALRM: return "SIGALRM";
+    case SIGTERM: return "SIGTERM";
+    case SIGCHLD: return "SIGCHLD";
+    case SIGCONT: return "SIGCONT";
+    case SIGSTOP: return "SIGSTOP";
+    case SIGTSTP: return "SIGTSTP";
+    case SIGXCPU: return "SIGXCPU";
+    case SIGXFSZ: return "SIGXFSZ";
+    default:      return "UNKNOWN";
+    }
 }
