@@ -385,3 +385,51 @@ void pm_shutdown_all(int timeout_sec) {
     /* Final non-blocking sweep for any remaining child. */
     reap_for_shutdown();
 }
+
+void pm_periodic_check(void) {
+    pm_reap();
+
+    for (int i = 0; i < g_child_count; i++) {
+        child_t *c = &g_children[i];
+        if (c->state != CHILD_RUNNING || c->pid <= 0) {
+            continue;
+        }
+
+        if (kill(c->pid, 0) == -1) {
+            if (errno == ESRCH) {
+                pid_t lost_pid = c->pid;
+                c->pid = -1;
+                log_event(LVL_WARN, "CHILD_LOST name=%s pid=%ld",
+                          c->name, (long)lost_pid);
+                handle_unexpected_exit(c, lost_pid);
+            } else if (errno != EPERM) {
+                log_event(LVL_ERROR, "ERROR op=kill name=%s detail=%s",
+                          c->name, strerror(errno));
+            }
+        }
+    }
+
+    log_event(LVL_INFO, "PERIODIC_CHECK running=%d", pm_running_count());
+}
+
+int pm_start_timer(void) {
+    struct itimerval it;
+    memset(&it, 0, sizeof(it));
+    it.it_interval.tv_sec = CHECK_INTERVAL_SEC;
+    it.it_value.tv_sec    = CHECK_INTERVAL_SEC;
+
+    if (setitimer(ITIMER_REAL, &it, NULL) == -1) {
+        log_event(LVL_ERROR, "ERROR op=setitimer detail=%s", strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+void pm_stop_timer(void) {
+    struct itimerval it;
+    memset(&it, 0, sizeof(it));
+
+    if (setitimer(ITIMER_REAL, &it, NULL) == -1) {
+        log_event(LVL_ERROR, "ERROR op=setitimer detail=%s", strerror(errno));
+    }
+}
