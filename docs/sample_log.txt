@@ -1,0 +1,41 @@
+[2026-11-26 01:13:19] [INFO ] WATCHDOG_START pid=568
+[2026-11-26 01:13:19] [INFO ] CHILD_START name=worker-A pid=571 restarts=0
+[2026-11-26 01:13:19] [INFO ] CHILD_START name=worker-B pid=572 restarts=0
+[2026-11-26 01:13:19] [INFO ] CHILD_START name=worker-C pid=574 restarts=0
+[2026-11-26 01:13:19] [INFO ] CHILD_START name=worker-D pid=575 restarts=0
+[2026-11-26 01:13:22] [WARN ] CHILD_EXIT_ERROR name=worker-D pid=575 code=2
+[2026-11-26 01:13:22] [INFO ] CHILD_RESTART name=worker-D attempt=1/3
+[2026-11-26 01:13:22] [INFO ] CHILD_START name=worker-D pid=611 restarts=1
+[2026-11-26 01:13:24] [INFO ] PERIODIC_CHECK running=4
+[2026-11-26 01:13:25] [WARN ] CHILD_EXIT_ERROR name=worker-D pid=611 code=2
+[2026-11-26 01:13:25] [INFO ] CHILD_RESTART name=worker-D attempt=2/3
+[2026-11-26 01:13:25] [INFO ] CHILD_START name=worker-D pid=644 restarts=2
+[2026-11-26 01:13:27] [INFO ] CHILD_EXIT_NORMAL name=worker-C pid=574 code=0
+[2026-11-26 01:13:28] [WARN ] CHILD_EXIT_ERROR name=worker-D pid=644 code=2
+[2026-11-26 01:13:28] [INFO ] CHILD_RESTART name=worker-D attempt=3/3
+[2026-11-26 01:13:28] [INFO ] CHILD_START name=worker-D pid=675 restarts=3
+[2026-11-26 01:13:29] [INFO ] PERIODIC_CHECK running=3
+[2026-11-26 01:13:31] [WARN ] CHILD_EXIT_ERROR name=worker-D pid=675 code=2
+[2026-11-26 01:13:31] [ERROR] RESTART_LIMIT_REACHED name=worker-D restarts=3
+[2026-11-26 01:13:31] [WARN ] CHILD_KILLED name=worker-A pid=571 signal=SIGKILL
+[2026-11-26 01:13:31] [INFO ] CHILD_RESTART name=worker-A attempt=1/3
+[2026-11-26 01:13:31] [INFO ] CHILD_START name=worker-A pid=717 restarts=1
+[2026-11-26 01:13:31] [WARN ] CHILD_KILLED name=worker-A pid=717 signal=SIGKILL
+[2026-11-26 01:13:31] [INFO ] CHILD_RESTART name=worker-A attempt=2/3
+[2026-11-26 01:13:31] [INFO ] CHILD_START name=worker-A pid=732 restarts=2
+[2026-11-26 01:13:31] [WARN ] CHILD_KILLED name=worker-A pid=732 signal=SIGKILL
+[2026-11-26 01:13:31] [INFO ] CHILD_RESTART name=worker-A attempt=3/3
+[2026-11-26 01:13:31] [INFO ] CHILD_START name=worker-A pid=743 restarts=3
+[2026-11-26 01:13:31] [WARN ] CHILD_KILLED name=worker-A pid=743 signal=SIGKILL
+[2026-11-26 01:13:31] [ERROR] RESTART_LIMIT_REACHED name=worker-A restarts=3
+[2026-11-26 01:13:32] [INFO ] STATUS_REPORT_BEGIN count=4
+[2026-11-26 01:13:32] [INFO ] STATUS name=worker-A pid=-1 state=FAILED restarts=3 uptime=0s
+[2026-11-26 01:13:32] [INFO ] STATUS name=worker-B pid=572 state=RUNNING restarts=0 uptime=13s
+[2026-11-26 01:13:32] [INFO ] STATUS name=worker-C pid=-1 state=EXITED_NORMAL restarts=0 uptime=0s
+[2026-11-26 01:13:32] [INFO ] STATUS name=worker-D pid=-1 state=FAILED restarts=3 uptime=0s
+[2026-11-26 01:13:32] [INFO ] STATUS_REPORT_END
+[2026-11-26 01:13:32] [INFO ] SHUTDOWN_BEGIN signal=SIGTERM
+[2026-11-26 01:13:32] [INFO ] CHILD_SIGTERM_SENT name=worker-B pid=572
+[2026-11-26 01:13:35] [WARN ] CHILD_SIGKILL_SENT name=worker-B pid=572
+[2026-11-26 01:13:35] [INFO ] CHILD_STOPPED name=worker-B pid=572
+[2026-11-26 01:13:35] [INFO ] SHUTDOWN_COMPLETE
