@@ -13,9 +13,9 @@ Sakarya University, Software Engineering, System Programming 2026-2027, Term Pro
 
 | Student | Module | GitHub |
 |---|---|---|
-| Student 1: `<NAME>` | Signal management + main program | `<GITHUB_USERNAME>` |
-| Student 2: `<NAME>` | Child process management | `<GITHUB_USERNAME>` |
-| Student 3: Hamza Nahhas | Logging + test infrastructure | `hamza-nahhas` |
+| Student 1: `<NAME>` | Signal management + main program | [`USM279`](https://github.com/USM279) |
+| Student 2: Ahmet Oğan | Child process management | [`AhmtOgn`](https://github.com/AhmtOgn) |
+| Student 3: Hamza Nahhas | Logging + test infrastructure | [`hamza-nahhas`](https://github.com/hamza-nahhas) |
 
 See [CONTRACT.md](CONTRACT.md) for the module interfaces, file ownership and work plan.
 
