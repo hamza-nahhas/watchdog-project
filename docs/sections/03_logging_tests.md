@@ -67,7 +67,9 @@ running show `pid=-1`.
 | `CHILD_RESTART` | INFO | restart attempt `n/3` |
 | `RESTART_LIMIT_REACHED` | ERROR | 3 restarts used, child given up |
 | `PERIODIC_CHECK` | INFO | timer check every 5 s (`running=`) |
+| `CHILD_LOST` | WARN | periodic check found a recorded child that no longer exists (`kill(pid, 0)` = ESRCH) |
 | `STATUS_REPORT_BEGIN` / `STATUS` / `STATUS_REPORT_END` | INFO | SIGUSR1 report |
+| `ALL_CHILDREN_FINISHED` | INFO | no child is running any more, the watchdog shuts down by itself |
 | `SHUTDOWN_BEGIN` | INFO | shutdown requested (`signal=SIGINT/SIGTERM/NONE`) |
 | `CHILD_SIGTERM_SENT` / `CHILD_SIGKILL_SENT` | INFO / WARN | shutdown signals sent to a child |
 | `CHILD_STOPPED` | INFO | child reaped during shutdown |
@@ -86,8 +88,11 @@ Dependency files (`-MMD -MP`) rebuild a module when a header changes. The final 
 `tests/test_scenarios.sh` tests the **real binaries** as a black box, the same way a user
 would: it starts `./watchdog`, sends signals, and checks the log and the process table.
 
-- **No fixed sleeps.** Every check polls the log until the expected line appears or a timeout
-  expires, so the tests are fast and do not depend on machine speed.
+- **No fixed sleeps for positive checks.** Every check that waits for an event polls the log
+  until the expected line appears or a timeout expires, so the tests are fast and do not
+  depend on machine speed. Only the two negative checks ("worker-C is *not* restarted",
+  "worker-A is *not* restarted after the limit") wait a short fixed time first (0.5 s and
+  1 s), because the absence of a line cannot be polled for.
 - **PID verification before SIGKILL** (required by the spec). The worker's PID is read from
   its latest `CHILD_START` line and checked with `ps -p <pid> -o args=` before it is killed.
   Any other process is never signalled.
