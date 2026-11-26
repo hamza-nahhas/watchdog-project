@@ -140,8 +140,9 @@ int main(void)
         }
     }
 
-    /* Shutdown. The signals stay blocked: a second Ctrl+C now only sets
-     * g_shutdown again and cannot interrupt the sequence half-way. */
+    /* Shutdown. The 5 signals stay blocked for the whole sequence, so their
+     * handler does not run at all: a second Ctrl+C just stays pending (it is
+     * discarded when the process exits) and cannot interrupt the sequence. */
     log_event(LVL_INFO, "SHUTDOWN_BEGIN signal=%s", sm_signal_name(g_shutdown));
     pm_set_shutting_down();   /* first: pm_reap must not restart anyone now */
     pm_stop_timer();
