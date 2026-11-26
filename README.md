@@ -11,29 +11,97 @@ Sakarya University, Software Engineering, System Programming 2026-2027, Term Pro
 
 ## Team
 
-| Student | Module | GitHub |
+| Student | Module | Files | GitHub |
+|---|---|---|---|
+| Student 1: Obada Fadi | Signal management + main program | `signal_manager.h/.c`, `main.c` | [`USM279`](https://github.com/USM279) |
+| Student 2: Ahmet Oğan | Child process management | `process_manager.h/.c`, `workers/worker.c` | [`AhmtOgn`](https://github.com/AhmtOgn) |
+| Student 3: Hamza Nahhas | Logging + test infrastructure | `logger.h/.c`, `Makefile`, `tests/`, docs | [`hamza-nahhas`](https://github.com/hamza-nahhas) |
+
+Module interfaces, file ownership and the work plan are in [CONTRACT.md](CONTRACT.md).
+
+## Project structure
+
+```
+include/   signal_manager.h  process_manager.h  logger.h
+src/       main.c  signal_manager.c  process_manager.c  logger.c
+workers/   worker.c                 test worker started by the watchdog
+tests/     test_scenarios.sh        automated test scenarios (make test)
+docs/      REPORT.pdf  sample_log.txt  test_results.txt  sections/
+```
+
+## Installation
+
+Linux or WSL (Ubuntu) with `gcc` and `make`:
+
+```bash
+sudo apt update && sudo apt install -y build-essential git
+git clone https://github.com/hamza-nahhas/watchdog-project.git
+cd watchdog-project
+make            # builds ./watchdog and ./worker (0 warnings with -Wall -Wextra -Wpedantic)
+```
+
+`make clean` removes build products, the log and the pid file.
+
+## Usage
+
+Run from the project root (the watchdog starts `./worker` and writes `./watchdog.log`):
+
+```bash
+./watchdog
+```
+
+It starts four workers, each one set up to exercise one behaviour:
+
+| Worker | Behaviour | What it shows |
 |---|---|---|
-| Student 1: `<NAME>` | Signal management + main program | [`USM279`](https://github.com/USM279) |
-| Student 2: Ahmet Oğan | Child process management | [`AhmtOgn`](https://github.com/AhmtOgn) |
-| Student 3: Hamza Nahhas | Logging + test infrastructure | [`hamza-nahhas`](https://github.com/hamza-nahhas) |
+| `worker-A` | runs forever | target for the manual `kill -SIGKILL` test: restart, then restart limit |
+| `worker-B` | runs forever, **ignores SIGTERM** | shutdown escalates to SIGKILL after 3 s |
+| `worker-C` | exits with code 0 after 8 s | normal termination: detected, **not** restarted |
+| `worker-D` | exits with code 2 every 3 s | error exit: restarted 3 times, then given up |
 
-See [CONTRACT.md](CONTRACT.md) for the module interfaces, file ownership and work plan.
-
-## Build and run
-
-Requirements: Linux (or WSL), `gcc`, `make`.
+From a second terminal:
 
 ```bash
-make            # builds ./watchdog and ./worker
-./watchdog      # run from the project root
+WD=$(cat watchdog.pid)
+
+kill -SIGUSR1 $WD            # status report (PID + state of every child) -> watchdog.log
+kill -SIGTERM $WD            # graceful shutdown (Ctrl+C in the first terminal = SIGINT, same effect)
+
+# Unexpected termination of a worker (test only). Verify the PID first:
+grep 'CHILD_START name=worker-A' watchdog.log | tail -1     # latest pid of worker-A
+ps -p <WORKER_PID> -o args=                                 # must print: worker worker-A ...
+kill -SIGKILL <WORKER_PID>
 ```
 
-From another terminal:
+Behaviour summary:
 
-```bash
-kill -SIGUSR1 $(cat watchdog.pid)   # status report into watchdog.log
-kill -SIGTERM $(cat watchdog.pid)   # graceful shutdown (Ctrl+C works too)
+- **Exit code 0**: normal termination, not restarted.
+- **Non-zero exit code or killed by a signal**: unexpected, restarted at most **3** times; after that `RESTART_LIMIT_REACHED`.
+- **Every 5 s** (`setitimer`/`SIGALRM`): periodic liveness check.
+- **SIGINT / SIGTERM**: stop restarting, send SIGTERM to all children, wait 3 s, SIGKILL the rest, reap everything (no zombies), remove `watchdog.pid`, exit.
+- If every child has finished on its own, the watchdog shuts down by itself (`ALL_CHILDREN_FINISHED`).
+
+## The log
+
+Every line has the format:
+
 ```
+[YYYY-MM-DD HH:MM:SS] [LEVEL] EVENT key=value ...
+```
+
+Example (full output in [docs/sample_log.txt](docs/sample_log.txt)):
+
+```
+[2026-11-26 01:13:19] [INFO ] CHILD_START name=worker-A pid=571 restarts=0
+[2026-11-26 01:13:31] [WARN ] CHILD_KILLED name=worker-A pid=571 signal=SIGKILL
+[2026-11-26 01:13:31] [INFO ] CHILD_RESTART name=worker-A attempt=1/3
+[2026-11-26 01:13:32] [INFO ] STATUS name=worker-B pid=572 state=RUNNING restarts=0 uptime=13s
+[2026-11-26 01:13:32] [INFO ] SHUTDOWN_BEGIN signal=SIGTERM
+[2026-11-26 01:13:35] [WARN ] CHILD_SIGKILL_SENT name=worker-B pid=572
+```
+
+Useful filters: `grep -E 'WARN|ERROR' watchdog.log`, `grep -A6 STATUS_REPORT_BEGIN watchdog.log`.
+The full list of events is in CONTRACT.md section 7.
 
 ## Tests
 
@@ -41,4 +109,8 @@ kill -SIGTERM $(cat watchdog.pid)   # graceful shutdown (Ctrl+C works too)
 make test
 ```
 
-*(Full usage, test scenarios and sample output will be added as the modules are integrated.)*
+Runs the 9 scenarios from the spec (normal operation, normal termination, error exit with
+restart limit, unexpected termination, manual restart limit, SIGUSR1 status report, SIGTERM
+shutdown, SIGINT shutdown, log verification) against the real binaries, prints a PASS/FAIL
+table, and writes [docs/test_results.txt](docs/test_results.txt) and
+[docs/sample_log.txt](docs/sample_log.txt). Current result: **9/9 PASS**.

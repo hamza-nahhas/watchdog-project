@@ -1,0 +1,15 @@
+Watchdog test results - 2026-11-26 01:13:38 - Linux 5.15.167.4-microsoft-standard-WSL2
+
+| #  | Scenario                             | Result | Detail
+|----|--------------------------------------|--------|------------------------------
+| 1  | Normal operation                     | PASS   | 4 children started, pid file = 568
+| 2  | Normal termination                   | PASS   | worker-C exit 0 detected, not restarted
+| 3  | Error exit + restart limit           | PASS   | worker-D restarted 3 times, then given up
+| 4  | Unexpected termination               | PASS   | SIGKILL detected, worker-A restarted (1/3)
+| 5  | Restart limit (manual)               | PASS   | 3 restarts, 4th kill -> RESTART_LIMIT_REACHED
+| 6  | Status reporting (SIGUSR1)           | PASS   | report written with state of all 4 children
+| 7  | Graceful shutdown (SIGTERM)          | PASS   | children terminated + reaped, no zombies
+| 9  | Log verification                     | PASS   | 41 well-formed lines, all events present
+| 8  | Graceful shutdown (SIGINT / Ctrl+C)  | PASS   | children terminated + reaped
+
+Summary: 9/9 passed
