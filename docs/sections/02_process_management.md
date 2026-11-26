@@ -2,7 +2,7 @@
 
 This module (`include/process_manager.h`, `src/process_manager.c`, `workers/worker.c`) manages the full life cycle of the supervised worker processes: creation, status tracking, reaping, bounded automatic restarts, periodic liveness checks, and controlled shutdown. All data is kept in a fixed-size table (`child_t g_children[MAX_CHILDREN]`, with `MAX_CHILDREN = 8`) with no dynamic memory allocation.
 
-### Worker Configuration Table
+### 2.1 Worker Configuration Table
 
 `pm_init()` populates the table from a static configuration of four workers executed from the same `./worker` binary with different arguments (`worker <name> <lifetime_sec> <exit_code> <ignore_sigterm>`):
 
@@ -13,7 +13,7 @@ This module (`include/process_manager.h`, `src/process_manager.c`, `workers/work
 | `worker-C` | 8 | 0 | 0 | Normal termination (`code=0`), must not be restarted |
 | `worker-D` | 3 | 2 | 0 | Error exit (`code=2`), automatically restarted 3 times then `FAILED` |
 
-### Process Spawning (`fork` / `execv`) and Child Isolation
+### 2.2 Process Spawning (`fork` / `execv`) and Child Isolation
 
 `pm_spawn_all()` calls `spawn_child()` for each configured entry unless shutdown is active. After `fork()`, the child executes three steps in strict order before replacing its image with `execv("./worker", argv)`:
 
@@ -23,7 +23,7 @@ This module (`include/process_manager.h`, `src/process_manager.c`, `workers/work
 
 The parent records the child's `pid`, sets its state to `CHILD_RUNNING`, timestamps `started_at`, and logs `CHILD_START`.
 
-### Reaping (`waitpid` + `WNOHANG`) and Restart Policy
+### 2.3 Reaping (`waitpid` + `WNOHANG`) and Restart Policy
 
 When the main loop observes `g_sigchld`, it calls `pm_reap()`. Standard POSIX signals are not queued: if multiple children exit almost simultaneously, the kernel may coalesce them into a single `SIGCHLD`. Therefore, `pm_reap()` runs `waitpid(-1, &status, WNOHANG)` in a loop until it returns `0` (no more exited children) or `-1` with `ECHILD` (retrying on `EINTR`). This reaps every terminated child without blocking the main loop and prevents zombies.
 
@@ -38,11 +38,11 @@ Each reaped PID is matched in `g_children`, its `pid` is cleared to `-1`, and it
 
 Bounding restarts to `MAX_RESTARTS = 3` guarantees that a permanently broken worker cannot trap the supervisor in an infinite fork loop.
 
-### Periodic Liveness Check (`setitimer`)
+### 2.4 Periodic Liveness Check (`setitimer`)
 
 `pm_start_timer()` configures `ITIMER_REAL` via `setitimer()` to emit `SIGALRM` every `CHECK_INTERVAL_SEC = 5` seconds (`pm_stop_timer()` disarms it during shutdown). On each tick, the main loop invokes `pm_periodic_check()`, which first runs `pm_reap()` as a safety net, then probes every `CHILD_RUNNING` PID with `kill(pid, 0)`. If `kill()` fails with `ESRCH`, the child is logged as `CHILD_LOST` and passed through the unexpected-exit handler. Finally, it logs `PERIODIC_CHECK running=<n>`.
 
-### Controlled Shutdown Escalation
+### 2.5 Controlled Shutdown Escalation
 
 During shutdown, `pm_set_shutting_down()` blocks any further restarts and `pm_shutdown_all(SHUTDOWN_TIMEOUT_SEC)` runs four phases:
 
