@@ -9,7 +9,7 @@ Watchdog test results - 2026-11-26 01:13:38 - Linux 5.15.167.4-microsoft-standar
 | 5  | Restart limit (manual)               | PASS   | 3 restarts, 4th kill -> RESTART_LIMIT_REACHED
 | 6  | Status reporting (SIGUSR1)           | PASS   | report written with state of all 4 children
 | 7  | Graceful shutdown (SIGTERM)          | PASS   | children terminated + reaped, no zombies
-| 9  | Log verification                     | PASS   | 41 well-formed lines, all events present
 | 8  | Graceful shutdown (SIGINT / Ctrl+C)  | PASS   | children terminated + reaped
+| 9  | Log verification                     | PASS   | 41 well-formed lines, all events present
 
 Summary: 9/9 passed

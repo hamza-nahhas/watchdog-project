@@ -265,9 +265,10 @@ passed=$((total - FAILS))
     echo
     printf '| %-2s | %-36s | %-6s | %s\n' "#" "Scenario" "Result" "Detail"
     printf '|----|--------------------------------------|--------|------------------------------\n'
+    # Scenario 8 runs last (fresh watchdog), so sort the rows by scenario number.
     for i in "${!T_ID[@]}"; do
         printf '| %-2s | %-36s | %-6s | %s\n' "${T_ID[$i]}" "${T_NAME[$i]}" "${T_RESULT[$i]}" "${T_DETAIL[$i]}"
-    done
+    done | sort -t'|' -k2,2n
     echo
     echo "Summary: $passed/$total passed"
 } | tee "$RESULTS_FILE"
